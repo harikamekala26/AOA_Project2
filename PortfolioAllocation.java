@@ -1,27 +1,20 @@
-
-
 public class PortfolioAllocation {
-    
     
     private static final int SOURCE = 0;
     private int sinkIndex;
     private int totalNodes;
-    
     
     private double[][] capacity;      
     private double[][] flow;         
     private int[] parent;             
     private boolean[] visited;       
     
-    
     private String[] assets;
     private String[] sectors;
     private String[] regions;
     private double capital;
     
-    
     private String[] nodeNames;
-    
     
     static class Queue {
         private int[] data;
@@ -37,7 +30,6 @@ public class PortfolioAllocation {
         
         public void enqueue(int value) {
             if (size == capacity) {
-            
                 int newCapacity = capacity * 2;
                 int[] newData = new int[newCapacity];
                 for (int i = 0; i < size; i++) {
@@ -66,7 +58,6 @@ public class PortfolioAllocation {
         }
     }
     
-    
     public PortfolioAllocation(String[] assets, String[] sectors, 
                                String[] regions, double capital) {
         this.assets = assets;
@@ -74,16 +65,13 @@ public class PortfolioAllocation {
         this.regions = regions;
         this.capital = capital;
         
-        
-        this.totalNodes = 1 + assets.length + sectors.length + regions.length + 1;
+        this.totalNodes = 1 + assets.length + (2 * sectors.length) + regions.length + 1;
         this.sinkIndex = totalNodes - 1;
-        
         
         this.capacity = new double[totalNodes][totalNodes];
         this.flow = new double[totalNodes][totalNodes];
         this.parent = new int[totalNodes];
         this.visited = new boolean[totalNodes];
-        
         
         this.nodeNames = new String[totalNodes];
         this.nodeNames[SOURCE] = "SOURCE";
@@ -92,7 +80,10 @@ public class PortfolioAllocation {
             nodeNames[idx++] = "A_" + assets[i];
         }
         for (int i = 0; i < sectors.length; i++) {
-            nodeNames[idx++] = "S_" + sectors[i];
+            nodeNames[idx++] = "S_IN_" + sectors[i];
+        }
+        for (int i = 0; i < sectors.length; i++) {
+            nodeNames[idx++] = "S_OUT_" + sectors[i];
         }
         for (int i = 0; i < regions.length; i++) {
             nodeNames[idx++] = "G_" + regions[i];
@@ -100,26 +91,25 @@ public class PortfolioAllocation {
         nodeNames[sinkIndex] = "SINK";
     }
     
-    
     private int getAssetIndex(int assetId) {
         return 1 + assetId;
     }
     
-    
-    private int getSectorIndex(int sectorId) {
+    private int getSectorInIndex(int sectorId) {
         return 1 + assets.length + sectorId;
     }
     
-   
-    private int getRegionIndex(int regionId) {
-        return 1 + assets.length + sectors.length + regionId;
+    private int getSectorOutIndex(int sectorId) {
+        return 1 + assets.length + sectors.length + sectorId;
     }
     
-   
+    private int getRegionIndex(int regionId) {
+        return 1 + assets.length + (2 * sectors.length) + regionId;
+    }
+    
     public void buildNetwork(double[] capAsset, double[] capSector, 
                             double[] capRegion, boolean[][] compatibleAS, 
                             boolean[][] compatibleSR) {
-        
         
         for (int i = 0; i < totalNodes; i++) {
             for (int j = 0; j < totalNodes; j++) {
@@ -127,34 +117,36 @@ public class PortfolioAllocation {
             }
         }
         
-        
         for (int i = 0; i < assets.length; i++) {
             int assetIdx = getAssetIndex(i);
             capacity[SOURCE][assetIdx] = capAsset[i] * capital;
         }
         
-        
         for (int i = 0; i < assets.length; i++) {
             for (int j = 0; j < sectors.length; j++) {
                 if (compatibleAS[i][j]) {
                     int assetIdx = getAssetIndex(i);
-                    int sectorIdx = getSectorIndex(j);
-                    capacity[assetIdx][sectorIdx] = capital; 
+                    int sectorInIdx = getSectorInIndex(j);
+                    capacity[assetIdx][sectorInIdx] = capital;
                 }
             }
         }
         
+        for (int j = 0; j < sectors.length; j++) {
+            int sectorInIdx = getSectorInIndex(j);
+            int sectorOutIdx = getSectorOutIndex(j);
+            capacity[sectorInIdx][sectorOutIdx] = capSector[j];
+        }
         
         for (int j = 0; j < sectors.length; j++) {
             for (int k = 0; k < regions.length; k++) {
                 if (compatibleSR[j][k]) {
-                    int sectorIdx = getSectorIndex(j);
+                    int sectorOutIdx = getSectorOutIndex(j);
                     int regionIdx = getRegionIndex(k);
-                    capacity[sectorIdx][regionIdx] = capSector[j];
+                    capacity[sectorOutIdx][regionIdx] = capital;
                 }
             }
         }
-        
         
         for (int k = 0; k < regions.length; k++) {
             int regionIdx = getRegionIndex(k);
@@ -162,9 +154,7 @@ public class PortfolioAllocation {
         }
     }
     
-    
     private boolean bfs() {
-        
         for (int i = 0; i < totalNodes; i++) {
             visited[i] = false;
             parent[i] = -1;
@@ -178,9 +168,7 @@ public class PortfolioAllocation {
         while (!queue.isEmpty()) {
             int u = queue.dequeue();
             
-            
             for (int v = 0; v < totalNodes; v++) {
-                
                 double residualCap = capacity[u][v] - flow[u][v];
                 
                 if (!visited[v] && residualCap > 1e-9) {
@@ -189,20 +177,15 @@ public class PortfolioAllocation {
                     queue.enqueue(v);
                     
                     if (v == sinkIndex) {
-                        return true; 
+                        return true;
                     }
                 }
             }
         }
         
-        return false; 
+        return false;
     }
     
-    /**
-     * Edmonds-Karp Algorithm - Maximum Flow
-     * Time Complexity: O(V * E^2)
-     * Space Complexity: O(V^2) for adjacency matrix
-     */
     public FlowResult edmondsKarp() {
         long startTime = System.nanoTime();
         
@@ -216,11 +199,9 @@ public class PortfolioAllocation {
         double maxFlow = 0.0;
         int iterations = 0;
         
-        // Find augmenting paths using BFS
         while (bfs()) {
             iterations++;
             
-            // Find bottleneck capacity along path
             double bottleneck = Double.MAX_VALUE;
             for (int v = sinkIndex; v != SOURCE; v = parent[v]) {
                 int u = parent[v];
@@ -230,66 +211,128 @@ public class PortfolioAllocation {
                 }
             }
             
-            // Update flow along path
             for (int v = sinkIndex; v != SOURCE; v = parent[v]) {
                 int u = parent[v];
                 flow[u][v] += bottleneck;
-                flow[v][u] -= bottleneck; // Reverse flow
+                flow[v][u] -= bottleneck;
             }
             
             maxFlow += bottleneck;
         }
         
         long endTime = System.nanoTime();
-        double timeTaken = (endTime - startTime) / 1_000_000.0; // Convert to milliseconds
+        double timeTaken = (endTime - startTime) / 1_000_000.0;
         
         return new FlowResult(maxFlow, iterations, timeTaken);
     }
     
-    /**
-     * Extract portfolio allocation from flow
-     */
-    public AllocationResult extractAllocation() {
-        int maxAllocations = assets.length * sectors.length * regions.length;
-        Allocation[] allocations = new Allocation[maxAllocations];
-        int allocationCount = 0;
-        
-        // Check flow through all possible paths
+    public AggregateTotals getAggregateTotals() {
+        double[] assetTotals = new double[assets.length];
         for (int i = 0; i < assets.length; i++) {
-            for (int j = 0; j < sectors.length; j++) {
-                for (int k = 0; k < regions.length; k++) {
-                    int assetIdx = getAssetIndex(i);
-                    int sectorIdx = getSectorIndex(j);
-                    int regionIdx = getRegionIndex(k);
-                    
-                    // Check if there's flow through this path
-                    double flowAS = flow[assetIdx][sectorIdx];
-                    double flowSR = flow[sectorIdx][regionIdx];
-                    
-                    if (flowAS > 1e-6 && flowSR > 1e-6) {
-                        double amount = (flowAS < flowSR) ? flowAS : flowSR;
-                        if (amount > 1e-6) {
-                            allocations[allocationCount++] = 
-                                new Allocation(assets[i], sectors[j], regions[k], amount);
-                        }
-                    }
-                }
+            int assetIdx = getAssetIndex(i);
+            assetTotals[i] = flow[SOURCE][assetIdx];
+        }
+        
+        double[] sectorTotals = new double[sectors.length];
+        for (int j = 0; j < sectors.length; j++) {
+            int sectorInIdx = getSectorInIndex(j);
+            int sectorOutIdx = getSectorOutIndex(j);
+            sectorTotals[j] = flow[sectorInIdx][sectorOutIdx];
+        }
+        
+        double[] regionTotals = new double[regions.length];
+        for (int k = 0; k < regions.length; k++) {
+            int regionIdx = getRegionIndex(k);
+            regionTotals[k] = flow[regionIdx][sinkIndex];
+        }
+        
+        return new AggregateTotals(assetTotals, sectorTotals, regionTotals);
+    }
+    
+
+    public boolean validateConstraints(FlowResult flowResult, AggregateTotals totals,
+                                      double[] capAsset, double[] capSector, double[] capRegion) {
+        boolean valid = true;
+        double epsilon = 1e-6;
+        
+        if (flowResult.maxFlow > capital + epsilon) {
+            System.err.println("ERROR: Allocated $" + String.format("%.2f", flowResult.maxFlow) + 
+                             " exceeds capital $" + String.format("%.2f", capital));
+            valid = false;
+        }
+        
+        for (int i = 0; i < assets.length; i++) {
+            double limit = capAsset[i] * capital;
+            if (totals.assetTotals[i] > limit + epsilon) {
+                System.err.println("ERROR: Asset " + assets[i] + " = $" + 
+                                 String.format("%.2f", totals.assetTotals[i]) + 
+                                 " exceeds limit $" + String.format("%.2f", limit));
+                valid = false;
             }
         }
         
-        // Trim array to actual size
-        Allocation[] result = new Allocation[allocationCount];
-        for (int i = 0; i < allocationCount; i++) {
-            result[i] = allocations[i];
+        for (int j = 0; j < sectors.length; j++) {
+            if (totals.sectorTotals[j] > capSector[j] + epsilon) {
+                System.err.println("ERROR: Sector " + sectors[j] + " = $" + 
+                                 String.format("%.2f", totals.sectorTotals[j]) + 
+                                 " exceeds limit $" + String.format("%.2f", capSector[j]));
+                valid = false;
+            }
         }
         
-        return new AllocationResult(result);
+        for (int k = 0; k < regions.length; k++) {
+            double limit = capRegion[k] * capital;
+            if (totals.regionTotals[k] > limit + epsilon) {
+                System.err.println("ERROR: Region " + regions[k] + " = $" + 
+                                 String.format("%.2f", totals.regionTotals[k]) + 
+                                 " exceeds limit $" + String.format("%.2f", limit));
+                valid = false;
+            }
+        }
+        
+        if (valid) {
+            System.out.println("✓ All constraints validated successfully!");
+        }
+        
+        return valid;
     }
     
-    /**
-     * Print detailed results
-     */
-    public void printResults(FlowResult flowResult, AllocationResult allocationResult) {
+    public static boolean validateTestConstraints(double[] capAsset, double[] capSector, 
+                                                   double[] capRegion, double capital) {
+        boolean valid = true;
+        
+        double assetSum = 0.0;
+        for (double cap : capAsset) {
+            assetSum += cap;
+        }
+        
+        if (assetSum > 1.0 + 1e-6) {
+            System.err.println("WARNING: Asset capacity fractions sum to " + 
+                             String.format("%.2f%%", assetSum * 100) + 
+                             " which exceeds 100% of capital!");
+            valid = false;
+        }
+        
+        double regionSum = 0.0;
+        for (double cap : capRegion) {
+            regionSum += cap;
+        }
+        
+        if (regionSum > 1.0 + 1e-6) {
+            System.err.println("WARNING: Region capacity fractions sum to " + 
+                             String.format("%.2f%%", regionSum * 100) + 
+                             " which exceeds 100% of capital!");
+            valid = false;
+        }
+        
+        if (valid) {
+            System.out.println();
+        }
+        
+        return valid;
+    }
+    
+    public void printResults(FlowResult flowResult, AggregateTotals totals) {
         System.out.println();
         System.out.println("                    PORTFOLIO ALLOCATION RESULTS");
         System.out.println("--------------------------------------------------------------------------------");
@@ -304,82 +347,34 @@ public class PortfolioAllocation {
         System.out.println();
         
         System.out.println();
-        System.out.println("                    ALLOCATION BREAKDOWN");
-        System.out.println("--------------------------------------------------------------------------------");
-        System.out.printf("%-15s %-15s %-15s %15s%n", 
-                         "Asset Class", "Sector", "Region", "Amount ($)");
-        System.out.println();
-        
-        Allocation[] allocs = allocationResult.allocations;
-        for (int i = 0; i < allocs.length; i++) {
-            System.out.printf("%-15s %-15s %-15s %,15.2f%n",
-                             allocs[i].asset, allocs[i].sector, 
-                             allocs[i].region, allocs[i].amount);
-        }
-        System.out.println();
-        
-        // Calculate totals by asset class
-        System.out.println();
         System.out.println("ASSET CLASS TOTALS:");
-        double[] assetTotals = new double[assets.length];
-        for (int i = 0; i < allocs.length; i++) {
-            for (int j = 0; j < assets.length; j++) {
-                if (allocs[i].asset.equals(assets[j])) {
-                    assetTotals[j] += allocs[i].amount;
-                    break;
-                }
-            }
-        }
         for (int i = 0; i < assets.length; i++) {
-            double pct = 100.0 * assetTotals[i] / capital;
+            double pct = 100.0 * totals.assetTotals[i] / capital;
             System.out.printf("  %-15s: $%,15.2f  (%.2f%% of capital)%n",
-                             assets[i], assetTotals[i], pct);
+                             assets[i], totals.assetTotals[i], pct);
         }
-        
-        // Calculate totals by sector
+
         System.out.println();
         System.out.println("SECTOR EXPOSURE:");
-        double[] sectorTotals = new double[sectors.length];
-        for (int i = 0; i < allocs.length; i++) {
-            for (int j = 0; j < sectors.length; j++) {
-                if (allocs[i].sector.equals(sectors[j])) {
-                    sectorTotals[j] += allocs[i].amount;
-                    break;
-                }
-            }
+        for (int j = 0; j < sectors.length; j++) {
+            System.out.printf("  %-15s: $%,15.2f%n", sectors[j], totals.sectorTotals[j]);
         }
-        for (int i = 0; i < sectors.length; i++) {
-            System.out.printf("  %-15s: $%,15.2f%n", sectors[i], sectorTotals[i]);
-        }
-        
-        // Calculate totals by region
+
         System.out.println();
         System.out.println("GEOGRAPHIC EXPOSURE:");
-        double[] regionTotals = new double[regions.length];
-        for (int i = 0; i < allocs.length; i++) {
-            for (int j = 0; j < regions.length; j++) {
-                if (allocs[i].region.equals(regions[j])) {
-                    regionTotals[j] += allocs[i].amount;
-                    break;
-                }
-            }
-        }
-        for (int i = 0; i < regions.length; i++) {
-            double pct = 100.0 * regionTotals[i] / capital;
+        for (int k = 0; k < regions.length; k++) {
+            double pct = 100.0 * totals.regionTotals[k] / capital;
             System.out.printf("  %-15s: $%,15.2f  (%.2f%% of capital)%n",
-                             regions[i], regionTotals[i], pct);
+                             regions[k], totals.regionTotals[k], pct);
         }
         System.out.println();
     }
     
-    /**
-     * Print complexity analysis
-     */
     public void printComplexityAnalysis() {
         int V = totalNodes;
         int E = 0;
         
-        // Count edges
+
         for (int i = 0; i < totalNodes; i++) {
             for (int j = 0; j < totalNodes; j++) {
                 if (capacity[i][j] > 0) {
@@ -417,10 +412,8 @@ public class PortfolioAllocation {
         System.out.printf("  Total Space:              O(V^2) = %,d doubles ≈ %.2f MB%n",
                          2 * V * V, (2.0 * V * V * 8) / (1024 * 1024));
         System.out.println();
-        
     }
     
-    // Result classes
     static class FlowResult {
         double maxFlow;
         int iterations;
@@ -433,31 +426,19 @@ public class PortfolioAllocation {
         }
     }
     
-    static class Allocation {
-        String asset;
-        String sector;
-        String region;
-        double amount;
+    static class AggregateTotals {
+        double[] assetTotals;
+        double[] sectorTotals;
+        double[] regionTotals;
         
-        Allocation(String asset, String sector, String region, double amount) {
-            this.asset = asset;
-            this.sector = sector;
-            this.region = region;
-            this.amount = amount;
+        AggregateTotals(double[] assetTotals, double[] sectorTotals, double[] regionTotals) {
+            this.assetTotals = assetTotals;
+            this.sectorTotals = sectorTotals;
+            this.regionTotals = regionTotals;
         }
     }
     
-    static class AllocationResult {
-        Allocation[] allocations;
-        
-        AllocationResult(Allocation[] allocations) {
-            this.allocations = allocations;
-        }
-    }
-    
-    /**
-     * Test Case 1: Small Scale Portfolio (4x4x4)
-     */
+
     public static void testCase1() {
         System.out.println("\n");
         System.out.println("                    TEST CASE 1: BASIC PORTFOLIO (4x4x4)");
@@ -469,10 +450,10 @@ public class PortfolioAllocation {
         String[] regions = {"US", "Europe", "Asia", "Emerging"};
         double capital = 100_000_000.0; // $100M
         
-        // Capacity constraints
-        double[] capAsset = {0.70, 0.40, 0.10, 0.30};
+        double[] capAsset = {0.45, 0.25, 0.10, 0.20};
         double[] capSector = {25_000_000, 20_000_000, 15_000_000, 20_000_000};
-        double[] capRegion = {0.60, 0.30, 0.25, 0.15};
+
+        double[] capRegion = {0.45, 0.25, 0.20, 0.10};
         
         // Compatibility matrices
         boolean[][] compatibleAS = {
@@ -489,21 +470,19 @@ public class PortfolioAllocation {
             {true, true, true, true}       // Finance
         };
         
-        // Solve
+        validateTestConstraints(capAsset, capSector, capRegion, capital);
+        
         PortfolioAllocation portfolio = new PortfolioAllocation(
             assets, sectors, regions, capital);
         portfolio.buildNetwork(capAsset, capSector, capRegion, compatibleAS, compatibleSR);
         FlowResult flowResult = portfolio.edmondsKarp();
-        AllocationResult allocationResult = portfolio.extractAllocation();
-        
-        // Print results
-        portfolio.printResults(flowResult, allocationResult);
+        AggregateTotals totals = portfolio.getAggregateTotals();
+
+        portfolio.printResults(flowResult, totals);
+        portfolio.validateConstraints(flowResult, totals, capAsset, capSector, capRegion);
         portfolio.printComplexityAnalysis();
     }
     
-    /**
-     * Test Case 2: Medium Scale Portfolio (6x6x5)
-     */
     public static void testCase2() {
         System.out.println("\n");
         System.out.println("                TEST CASE 2: MEDIUM PORTFOLIO (6x6x5)");
@@ -513,15 +492,14 @@ public class PortfolioAllocation {
         String[] assets = {"Stocks", "Bonds", "Crypto", "RealEstate", "Commodities", "Cash"};
         String[] sectors = {"Tech", "Healthcare", "Energy", "Finance", "Consumer", "Industrial"};
         String[] regions = {"US", "Europe", "Asia", "LatinAmerica", "MiddleEast"};
-        double capital = 250_000_000.0; // $250M
+        double capital = 250_000_000.0;
         
-        // Capacity constraints
-        double[] capAsset = {0.60, 0.35, 0.08, 0.25, 0.15, 0.20};
+        double[] capAsset = {0.40, 0.25, 0.08, 0.15, 0.10, 0.02};
         double[] capSector = {60_000_000, 45_000_000, 35_000_000, 
                               50_000_000, 40_000_000, 30_000_000};
-        double[] capRegion = {0.50, 0.25, 0.30, 0.12, 0.10};
-        
-        // Compatibility matrices (75% sparse)
+
+        double[] capRegion = {0.40, 0.20, 0.25, 0.10, 0.05};
+
         boolean[][] compatibleAS = {
             {true, true, true, true, true, false},
             {false, true, true, true, true, true},
@@ -540,21 +518,19 @@ public class PortfolioAllocation {
             {true, true, false, false, false}
         };
         
-        // Solve
+        validateTestConstraints(capAsset, capSector, capRegion, capital);
+        
         PortfolioAllocation portfolio = new PortfolioAllocation(
             assets, sectors, regions, capital);
         portfolio.buildNetwork(capAsset, capSector, capRegion, compatibleAS, compatibleSR);
         FlowResult flowResult = portfolio.edmondsKarp();
-        AllocationResult allocationResult = portfolio.extractAllocation();
+        AggregateTotals totals = portfolio.getAggregateTotals();
         
-        // Print results
-        portfolio.printResults(flowResult, allocationResult);
+        portfolio.printResults(flowResult, totals);
+        portfolio.validateConstraints(flowResult, totals, capAsset, capSector, capRegion);
         portfolio.printComplexityAnalysis();
     }
     
-    /**
-     * Test Case 3: Large Scale Portfolio (8x8x6)
-     */
     public static void testCase3() {
         System.out.println("\n");
         System.out.println("                TEST CASE 3: LARGE PORTFOLIO (8x8x6)");
@@ -567,15 +543,13 @@ public class PortfolioAllocation {
                            "Consumer", "Industrial", "Utilities", "Materials"};
         String[] regions = {"NorthAmerica", "Europe", "Asia", "LatinAmerica", 
                            "MiddleEast", "Africa"};
-        double capital = 500_000_000.0; // $500M
-        
-        // Capacity constraints
-        double[] capAsset = {0.40, 0.20, 0.30, 0.05, 0.20, 0.10, 0.15, 0.08};
+        double capital = 500_000_000.0; 
+
+        double[] capAsset = {0.30, 0.15, 0.25, 0.05, 0.12, 0.08, 0.03, 0.02};
         double[] capSector = {100_000_000, 80_000_000, 60_000_000, 90_000_000,
                               70_000_000, 50_000_000, 40_000_000, 45_000_000};
-        double[] capRegion = {0.45, 0.25, 0.35, 0.15, 0.12, 0.08};
-        
-        // Compatibility matrices (70% sparse)
+        double[] capRegion = {0.35, 0.20, 0.25, 0.12, 0.05, 0.03};
+
         boolean[][] compatibleAS = {
             {true, true, true, true, true, false, true, false},
             {true, true, false, true, false, true, false, false},
@@ -598,21 +572,19 @@ public class PortfolioAllocation {
             {true, true, true, true, false, true}
         };
         
-        // Solve
+        validateTestConstraints(capAsset, capSector, capRegion, capital);
+        
         PortfolioAllocation portfolio = new PortfolioAllocation(
             assets, sectors, regions, capital);
         portfolio.buildNetwork(capAsset, capSector, capRegion, compatibleAS, compatibleSR);
         FlowResult flowResult = portfolio.edmondsKarp();
-        AllocationResult allocationResult = portfolio.extractAllocation();
+        AggregateTotals totals = portfolio.getAggregateTotals();
         
-        // Print results
-        portfolio.printResults(flowResult, allocationResult);
+        portfolio.printResults(flowResult, totals);
+        portfolio.validateConstraints(flowResult, totals, capAsset, capSector, capRegion);
         portfolio.printComplexityAnalysis();
     }
-    
-    /**
-     * Comparative Analysis across test cases
-     */
+
     public static void comparativeAnalysis() {
         System.out.println("\n");
         System.out.println("              COMPARATIVE ANALYSIS ACROSS ALL TEST CASES");
@@ -622,8 +594,7 @@ public class PortfolioAllocation {
         System.out.printf("%-15s %-12s %-12s %-15s %-15s%n",
                          "Test Case", "Vertices", "Edges", "Time (ms)", "Iterations");
         System.out.println("--------------------------------------------------------------------------------");
-        
-        // Run all test cases and collect metrics
+
         String[][] testConfigs = {
             {"4x4x4", "4", "4", "4"},
             {"6x6x5", "6", "6", "5"},
@@ -649,22 +620,22 @@ public class PortfolioAllocation {
             double[] capSector = new double[nSectors];
             double[] capRegion = new double[nRegions];
             
-            for (int i = 0; i < nAssets; i++) capAsset[i] = 0.5;
+            for (int i = 0; i < nAssets; i++) capAsset[i] = 1.0 / nAssets;
             for (int i = 0; i < nSectors; i++) capSector[i] = 20_000_000;
-            for (int i = 0; i < nRegions; i++) capRegion[i] = 0.4;
+            for (int i = 0; i < nRegions; i++) capRegion[i] = 1.0 / nRegions;
             
             boolean[][] compatibleAS = new boolean[nAssets][nSectors];
             boolean[][] compatibleSR = new boolean[nSectors][nRegions];
             
             for (int i = 0; i < nAssets; i++) {
                 for (int j = 0; j < nSectors; j++) {
-                    compatibleAS[i][j] = (i + j) % 3 != 0; // 70% compatible
+                    compatibleAS[i][j] = (i + j) % 3 != 0;
                 }
             }
             
             for (int i = 0; i < nSectors; i++) {
                 for (int j = 0; j < nRegions; j++) {
-                    compatibleSR[i][j] = (i + j) % 3 != 0; // 70% compatible
+                    compatibleSR[i][j] = (i + j) % 3 != 0;
                 }
             }
             
@@ -684,20 +655,30 @@ public class PortfolioAllocation {
             System.out.printf("%-15s %-12d %-12d %-15.3f %-15d%n",
                              config[0], V, E, result.timeTaken, result.iterations);
         }
-        
     }
     
-    /**
-     * Main method
-     */
     public static void main(String[] args) {
         System.out.println();
-        // Run all test cases
+
+        for (int i = 0; i < 3; i++) {
+            String[] assets = {"A1", "A2"};
+            String[] sectors = {"S1", "S2"};
+            String[] regions = {"R1", "R2"};
+            PortfolioAllocation warmup = new PortfolioAllocation(assets, sectors, regions, 1000000);
+            double[] capA = {0.5, 0.5};
+            double[] capS = {500000, 500000};
+            double[] capR = {0.5, 0.5};
+            boolean[][] compAS = {{true, true}, {true, true}};
+            boolean[][] compSR = {{true, true}, {true, true}};
+            warmup.buildNetwork(capA, capS, capR, compAS, compSR);
+            warmup.edmondsKarp();
+        }
+        
+        
         testCase1();
         testCase2();
         testCase3();
-        
-        // Comparative analysis
+
         comparativeAnalysis();
         
         System.out.println();
