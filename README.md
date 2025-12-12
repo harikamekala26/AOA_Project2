@@ -4,19 +4,19 @@
 
 1. Compile the Java source:
 
-    javac PortfolioAllocation.java
+       javac PortfolioAllocation.java
 
 2. Run the program:
 
-    java PortfolioAllocation
+       java PortfolioAllocation
 
 
 # Code Execution Steps (RobotPathPlanner.java)
 
 1. Compile the source (output to bin/):
 
-    javac -d bin RobotPathPlanner.java
+       javac -d bin RobotPathPlanner.java
 
 2. Run the compiled program:
 
-    java -cp bin RobotPathPlanner
+       java -cp bin RobotPathPlanner
